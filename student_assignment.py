@@ -11,6 +11,12 @@ from langchain_core.prompts import ChatPromptTemplate, FewShotChatMessagePromptT
 gpt_chat_version = 'gpt-4o'
 gpt_config = get_model_configuration(gpt_chat_version)
 
+class CustomJSONEncoder(json.JSONEncoder):
+    def encode(self, obj):
+        result = super().encode(obj)
+        formatted_result = result.replace('"Result": {', '"Result":\n  {')
+        return formatted_result
+        
 def to_json(response):
     with open('memorial_day_response.json', 'w', encoding='utf-8') as f:
         json.dump(response, f, ensure_ascii=False, indent=2)
@@ -92,7 +98,15 @@ def generate_hw01(question):
     final_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", """You are an assistant that provides information about Taiwan's memorial days.
-                        please provide the details of most important memorial day in Taiwan that is also a public holiday(in Traditional Chinese)"""),
+                        Please provide the details of the most important memorial day in Taiwan that is also a public holiday (in Traditional Chinese).
+                        Print result as a JSON Object:
+                        {{
+                        "Result": 
+                        {{
+                        "date": "xxxx-xx-xx",
+                        "name": "xx日"
+                        }}
+                        }}"""),
             few_shot_prompt,
             ("human", "{input}"),
         ]
@@ -101,8 +115,10 @@ def generate_hw01(question):
     chain = final_prompt | structured_llm
     
     response = chain.invoke({"input": question})
-       
-    return to_json(response)
+    
+    formatted_response = json.dumps(response, cls=CustomJSONEncoder, ensure_ascii=False, indent=2)###json.dumps(response, ensure_ascii=False, indent=2)
+    
+    return formatted_response
     
 def generate_hw02(question):
     pass
