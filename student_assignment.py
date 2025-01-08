@@ -98,15 +98,7 @@ def generate_hw01(question):
     final_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", """You are an assistant that provides information about Taiwan's memorial days.
-                        Please provide the details of the most important memorial day in Taiwan that is also a public holiday (in Traditional Chinese).
-                        Print result as a JSON Object:
-                        {{
-                        "Result": 
-                        {{
-                        "date": "xxxx-xx-xx",
-                        "name": "xx日"
-                        }}
-                        }}"""),
+                        Please provide the details of the most important memorial day in Taiwan that is also a public holiday (in Traditional Chinese)."""),
             few_shot_prompt,
             ("human", "{input}"),
         ]
