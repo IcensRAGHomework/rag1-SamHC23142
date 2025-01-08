@@ -38,18 +38,21 @@ def generate_hw01(question):
             "type": "object",
             "properties": {
                 "Result": {
-                    "type": "object",
-                    "properties": {
-                        "date": {
-                            "type": "string",
-                            "description": "The date of the memorial day in YYYY-MM-DD format",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "date": {
+                                "type": "string",
+                                "description": "The date of the memorial day in YYYY-MM-DD format",
+                            },
+                            "name": {
+                                "type": "string",
+                                "description": "The name of the memorial day in Traditional Chinese",
+                            },
                         },
-                        "name": {
-                            "type": "string",
-                            "description": "The name of the memorial day in Traditional Chinese",
-                        },
+                        "required": ["date", "name"],
                     },
-                    "required": ["date", "name"],
                 },
             },
             "required": ["Result"],
@@ -62,27 +65,30 @@ def generate_hw01(question):
     examples = [
         {"input": "2024年1月紀念日", "output":
         {
-          "Result": 
-          {
-            "date": "2024-01-01",
-            "name": "開國紀念日"
-          }
+          "Result":[
+            {
+              "date": "2024-01-01",
+              "name": "開國紀念日"
+            }
+          ]
         }},
         {"input": "2024年2月紀念日", "output": 
         {
-          "Result": 
-          {
-            "date": "2024-02-28",
-            "name": "和平紀念日"
-          }
+          "Result":[
+            {
+              "date": "2024-02-28",
+              "name": "和平紀念日"
+            }
+          ]
         }},
         {"input": "2024年3月紀念日", "output":
         {
-          "Result": 
-          {
-            "date": "2024-06-10",
-            "name": "端午節"
-          }
+          "Result":[
+            {
+              "date": "2024-06-10",
+              "name": "端午節"
+            }
+          ]
         }},
     ]
     example_prompt = ChatPromptTemplate.from_messages(
