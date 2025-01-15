@@ -4,12 +4,12 @@ import requests
 from model_configurations import get_model_configuration
 
 from langchain_openai import AzureChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
+from langchain_core.messages import SystemMessage, AIMessage, HumanMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, FewShotChatMessagePromptTemplate
 from langchain.agents import AgentExecutor, create_openai_functions_agent
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
-from typing import ClassVar
+from typing import ClassVar, List, Dict
 
 
 gpt_chat_version = 'gpt-4o'
@@ -178,18 +178,37 @@ def generate_hw02(question):
     
     tools = [CalendarificTool()]
     llm_with_tools = llm.bind_tools(tools)
-    messages = [HumanMessage(question)]
+    system_message = SystemMessage(content="""You are a competent AI assistant designed to help employees across various departments perform work-related tasks efficiently. Your primary objective is to enhance employee productivity by delivering high-quality, task-specific responses while maintaining a professional and approachable tone.
+
+When asked about holidays or memorial days in Taiwan, use the Calendarific tool to fetch accurate information. After retrieving the information, format your response as a JSON object with the following structure:
+{
+    "Result": [
+        {
+            "date": "YYYY-MM-DD",
+            "name": "Holiday Name in Traditional Chinese"
+        },
+        ...
+    ]
+}
+can not output like:```json ......```
+Ensure all holiday names are in Traditional Chinese. Include all relevant holidays for the specified period. Maintain a professional yet approachable tone in any additional explanations.""")
+
+    messages = [
+        system_message,
+        HumanMessage(content=question)
+    ]
+
     ai_msg = llm_with_tools.invoke(messages)
     messages.append(ai_msg)
+
+    for tool_call in ai_msg.additional_kwargs.get('tool_calls', []):
+        selected_tool = {"calendarific": CalendarificTool()}[tool_call["function"]["name"].lower()]
+        tool_output = selected_tool.invoke(json.loads(tool_call["function"]["arguments"]))
+        messages.append(ToolMessage(content=tool_output, tool_call_id=tool_call["id"]))
+
+    final_response = llm_with_tools.invoke(messages)
     
-    for tool_call in ai_msg.tool_calls:
-        selected_tool = {"calendarific": CalendarificTool()}[tool_call["name"].lower()]
-        tool_output = selected_tool.invoke(tool_call["args"])
-        messages.append(ToolMessage(tool_output, tool_call_id=tool_call["id"]))
-    
-    response = llm_with_tools.invoke(messages)
-    
-    return response.content
+    return final_response.content
 
 def generate_hw03(question2, question3):
     pass
