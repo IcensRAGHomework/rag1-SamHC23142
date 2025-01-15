@@ -1,11 +1,15 @@
 import json
 import traceback
-
+import requests
 from model_configurations import get_model_configuration
 
 from langchain_openai import AzureChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, FewShotChatMessagePromptTemplate
+from langchain.agents import AgentExecutor, create_openai_functions_agent
+from langchain.tools import BaseTool
+from pydantic import BaseModel, Field
+from typing import ClassVar
 
 
 gpt_chat_version = 'gpt-4o'
@@ -117,10 +121,76 @@ def generate_hw01(question):
     formatted_response = json.dumps(response, cls=CustomJSONEncoder, ensure_ascii=False, indent=2)###json.dumps(response, ensure_ascii=False, indent=2)
     
     return formatted_response
-    
+CALENDARIFIC_API_KEY = "3lvN3LXLOX9w25I5aChHnrRNE38jzWz8"
+class CalendarificInput(BaseModel):
+    year: int = Field(..., description="The year for which to find all holidays and observances")
+    country: str = Field(..., description="The country code (e.g., 'TW' for Taiwan)")
+    month: int = Field(..., description="The month (1-12) for which to find all holidays and observances")
+class CalendarificTool(BaseTool):
+    name: ClassVar[str] = "Calendarific"
+    description: ClassVar[str] = "Use this tool to retrieve all memorial days and holidays for a specific country, year, and month. It returns a comprehensive list of all national holidays, observances, and significant dates for the specified parameters."
+    args_schema: ClassVar[type] = CalendarificInput
+
+    def _run(self, year: int, country: str, month: int) -> str:
+        base_url = "https://calendarific.com/api/v2/holidays"
+        params = {
+            "api_key": CALENDARIFIC_API_KEY,
+            "country": country,
+            "year": year,
+            "month": month,
+        }
+        response = requests.get(base_url, params=params)
+        if response.status_code == 200:
+            holidays = response.json()['response']['holidays']
+            return json.dumps([{"name": h['name'], "date": h['date']['iso']} for h in holidays], ensure_ascii=False)
+        else:
+            return f"Error fetching holidays: {response.status_code}"
+
+def test_calendarific_tool():
+    tool = CalendarificTool()
+    year = 2024
+    country = "TW"
+    month = 10
+
+    result = tool._run(year, country, month)
+    try:
+        holidays = json.loads(result)
+        if isinstance(holidays, list):
+            print(f"Successfully fetched holidays for {month}/{year} in {country}:")
+            for holiday in holidays:
+                print(f"- {holiday['name']} on {holiday['date']}")
+        else:
+            print(f"Unexpected result format: {result}")
+    except json.JSONDecodeError:
+        print(f"Error decoding JSON: {result}")
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        
 def generate_hw02(question):
-    pass
+    llm = AzureChatOpenAI(
+            model=gpt_config['model_name'],
+            deployment_name=gpt_config['deployment_name'],
+            openai_api_key=gpt_config['api_key'],
+            openai_api_version=gpt_config['api_version'],
+            azure_endpoint=gpt_config['api_base'],
+            temperature=gpt_config['temperature']
+    )
     
+    tools = [CalendarificTool()]
+    llm_with_tools = llm.bind_tools(tools)
+    messages = [HumanMessage(question)]
+    ai_msg = llm_with_tools.invoke(messages)
+    messages.append(ai_msg)
+    
+    for tool_call in ai_msg.tool_calls:
+        selected_tool = {"calendarific": CalendarificTool()}[tool_call["name"].lower()]
+        tool_output = selected_tool.invoke(tool_call["args"])
+        messages.append(ToolMessage(tool_output, tool_call_id=tool_call["id"]))
+    
+    response = llm_with_tools.invoke(messages)
+    
+    return response.content
+
 def generate_hw03(question2, question3):
     pass
     
