@@ -2,14 +2,18 @@ import re
 import json
 import traceback
 import requests
+import base64
+
+from mimetypes import guess_type
+
 from model_configurations import get_model_configuration
 
 from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, FewShotChatMessagePromptTemplate, MessagesPlaceholder
-from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain.output_parsers import StructuredOutputParser, ResponseSchema
 from langchain.tools import BaseTool
@@ -311,9 +315,64 @@ def generate_hw03(question2, question3):
     parsed_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
     
     return parsed_json
+
+def local_image_to_data_url(image_path):
+    # Guess the MIME type of the image based on the file extension
+    mime_type, _ = guess_type(image_path)
+    if mime_type is None:
+        mime_type = 'application/octet-stream'  # Default MIME type if none is found
+
+    # Read and encode the image file
+    with open(image_path, "rb") as image_file:
+        base64_encoded_data = base64.b64encode(image_file.read()).decode('utf-8')
+
+    # Construct the data URL
+    return f"data:{mime_type};base64,{base64_encoded_data}"
     
 def generate_hw04(question):
-    pass
+    llm = AzureChatOpenAI(
+            model=gpt_config['model_name'],
+            deployment_name=gpt_config['deployment_name'],
+            openai_api_key=gpt_config['api_key'],
+            openai_api_version=gpt_config['api_version'],
+            azure_endpoint=gpt_config['api_base'],
+            temperature=gpt_config['temperature']
+    )
+    # Example usage
+    image_path = 'baseball.png'
+    data_url = local_image_to_data_url(image_path)
+    # print("Data URL:", data_url)
+    
+    systemMessage = """You are a helpful assistant.
+        following JSON format:
+        {{
+            "Result": {{
+                "score":"XXX"
+            }}
+        }}"""
+    
+    messages = [
+        SystemMessage(content=systemMessage),
+        HumanMessage(content=[
+            {
+                "type": "text",
+                "text": question
+            },
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": data_url
+                }
+            }
+        ])
+    ]
+
+    
+    response = llm.invoke(messages)
+    parsed_json = parse_json_markdown(response.content)
+    parsed_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
+    
+    return parsed_json
     
 def demo(question):
     llm = AzureChatOpenAI(
