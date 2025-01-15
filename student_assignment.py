@@ -343,16 +343,16 @@ def generate_hw04(question):
     data_url = local_image_to_data_url(image_path)
     # print("Data URL:", data_url)
     
-    systemMessage = """You are a helpful assistant.
+    system_message = """You are a helpful assistant.
         following JSON format:
         {{
             "Result": {{
-                "score":"XXX"
+                "score": number
             }}
         }}"""
     
     messages = [
-        SystemMessage(content=systemMessage),
+        SystemMessage(content=system_message),
         HumanMessage(content=[
             {
                 "type": "text",
