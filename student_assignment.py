@@ -1,3 +1,4 @@
+import re
 import json
 import traceback
 import requests
@@ -7,6 +8,7 @@ from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, FewShotChatMessagePromptTemplate
 from langchain.agents import AgentExecutor, create_openai_functions_agent
+from langchain.output_parsers import StructuredOutputParser, ResponseSchema
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
 from typing import ClassVar, List, Dict
@@ -15,6 +17,17 @@ from typing import ClassVar, List, Dict
 gpt_chat_version = 'gpt-4o'
 gpt_config = get_model_configuration(gpt_chat_version)
 
+def parse_json_markdown(json_string: str) -> dict:
+    match = re.search(r"""```
+                          (?:json)?
+                          (.*)```""", json_string, flags=re.DOTALL|re.VERBOSE)
+    if match is None:
+        json_str = json_string
+    else:
+        json_str = match.group(1)
+    json_str = json_str.strip()
+    parsed = json.loads(json_str, strict=False)
+    return parsed
 class CustomJSONEncoder(json.JSONEncoder):
     def encode(self, obj):
         result = super().encode(obj)
@@ -178,25 +191,46 @@ def generate_hw02(question):
     
     tools = [CalendarificTool()]
     llm_with_tools = llm.bind_tools(tools)
-    system_message = SystemMessage(content="""You are a competent AI assistant designed to help employees across various departments perform work-related tasks efficiently. Your primary objective is to enhance employee productivity by delivering high-quality, task-specific responses while maintaining a professional and approachable tone.
-
-When asked about holidays or memorial days in Taiwan, use the Calendarific tool to fetch accurate information. After retrieving the information, format your response as a JSON object with the following structure:
-{
-    "Result": [
-        {
-            "date": "YYYY-MM-DD",
-            "name": "Holiday Name in Traditional Chinese"
-        },
-        ...
+    response_schemas = [
+        ResponseSchema(
+            name="Result",
+            description="List of holidays",
+            type="array",
+            properties={
+                "date": {"type": "string", "description": "Date of the holiday in YYYY-MM-DD format"},
+                "name": {"type": "string", "description": "Name of the holiday in Traditional Chinese"}
+            }
+        )
     ]
-}
-can not output like:```json ......```
-Ensure all holiday names are in Traditional Chinese. Include all relevant holidays for the specified period. Maintain a professional yet approachable tone in any additional explanations.""")
+    output_parser = StructuredOutputParser.from_response_schemas(response_schemas)
+
+    system_message = SystemMessage(content=f"""You are a competent AI assistant designed to help employees across various departments perform work-related tasks efficiently. Your primary objective is to enhance employee productivity by delivering high-quality, task-specific responses while maintaining a professional and approachable tone.
+
+    When asked about holidays or memorial days in Taiwan, use the Calendarific tool to fetch accurate information. After retrieving the information, format your response as a JSON object with the following structure:
+
+    {output_parser.get_format_instructions()}
+
+    Ensure all holiday names are in Traditional Chinese. Include all relevant holidays for the specified period. Maintain a professional yet approachable tone in any additional explanations.
+    Example output format:
+    {{
+        "Result": [
+            {{
+                "date": "YYYY-MM-DD",
+                "name": "Day Name"
+            }},
+            {{
+                "date": "YYYY-MM-DD",
+                "name": "Day Name"
+            }},
+            ...
+        ]
+    }}
+    Always provide the output in this exact JSON format, without any additional markdown formatting or code block indicators.""")
 
     messages = [
-        system_message,
-        HumanMessage(content=question)
-    ]
+    system_message,
+    HumanMessage(content=question)
+]
 
     ai_msg = llm_with_tools.invoke(messages)
     messages.append(ai_msg)
@@ -207,8 +241,10 @@ Ensure all holiday names are in Traditional Chinese. Include all relevant holida
         messages.append(ToolMessage(content=tool_output, tool_call_id=tool_call["id"]))
 
     final_response = llm_with_tools.invoke(messages)
+    parsed_json = parse_json_markdown(final_response.content)
+    parsed_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
     
-    return final_response.content
+    return parsed_json
 
 def generate_hw03(question2, question3):
     pass
