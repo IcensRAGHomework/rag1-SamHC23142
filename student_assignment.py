@@ -6,12 +6,15 @@ from model_configurations import get_model_configuration
 
 from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage, ToolMessage
-from langchain_core.prompts import ChatPromptTemplate, FewShotChatMessagePromptTemplate
-from langchain.agents import AgentExecutor, create_openai_functions_agent
+from langchain_core.prompts import ChatPromptTemplate, FewShotChatMessagePromptTemplate, MessagesPlaceholder
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain.output_parsers import StructuredOutputParser, ResponseSchema
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
-from typing import ClassVar, List, Dict
+from typing import ClassVar
 
 
 gpt_chat_version = 'gpt-4o'
@@ -151,6 +154,7 @@ class CalendarificTool(BaseTool):
             "country": country,
             "year": year,
             "month": month,
+            "type": ""
         }
         response = requests.get(base_url, params=params)
         if response.status_code == 200:
@@ -166,18 +170,19 @@ def test_calendarific_tool():
     month = 10
 
     result = tool._run(year, country, month)
-    try:
-        holidays = json.loads(result)
-        if isinstance(holidays, list):
-            print(f"Successfully fetched holidays for {month}/{year} in {country}:")
-            for holiday in holidays:
-                print(f"- {holiday['name']} on {holiday['date']}")
-        else:
-            print(f"Unexpected result format: {result}")
-    except json.JSONDecodeError:
-        print(f"Error decoding JSON: {result}")
-    except Exception as e:
-        print(f"An error occurred: {str(e)}")
+    print(result)
+    # try:
+        # holidays = json.loads(result)
+        # if isinstance(holidays, list):
+            # print(f"Successfully fetched holidays for {month}/{year} in {country}:")
+            # for holiday in holidays:
+                # print(f"- {holiday['name']} on {holiday['date']}")
+        # else:
+            # print(f"Unexpected result format: {result}")
+    # except json.JSONDecodeError:
+        # print(f"Error decoding JSON: {result}")
+    # except Exception as e:
+        # print(f"An error occurred: {str(e)}")
         
 def generate_hw02(question):
     llm = AzureChatOpenAI(
@@ -247,7 +252,65 @@ def generate_hw02(question):
     return parsed_json
 
 def generate_hw03(question2, question3):
-    pass
+    llm = AzureChatOpenAI(
+            model=gpt_config['model_name'],
+            deployment_name=gpt_config['deployment_name'],
+            openai_api_key=gpt_config['api_key'],
+            openai_api_version=gpt_config['api_version'],
+            azure_endpoint=gpt_config['api_base'],
+            temperature=gpt_config['temperature']
+    )
+        
+    tools = [CalendarificTool()]
+    
+    system_message = """"You are an assistant knowledgeable about every country's festivals.
+    following JSON format:
+    {{
+        "Result": {{
+            "add": "This is a boolean value indicating whether the holiday needs to be added to the holiday list. Based on the question, determine if the holiday exists in the list. If it doesn't exist, set to true; otherwise, false",
+            "reason": "Describe why the holiday needs to be added or not. Specifically, explain whether the holiday already exists in the list and provide the current content of the list."
+        }}
+    }}
+    Ensure all holiday names are in Traditional Chinese. Maintain a professional yet approachable tone in any additional explanations."""
+
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_message),
+        MessagesPlaceholder(variable_name="chat_history"),
+        ("human", "{input}"),
+        MessagesPlaceholder("agent_scratchpad"),
+    ])
+
+    agent = create_tool_calling_agent(llm, tools, prompt)
+    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=False)
+
+    store = {}
+
+    def get_session_history(session_id: str) -> BaseChatMessageHistory:
+        if session_id not in store:
+            store[session_id] = ChatMessageHistory()
+        return store[session_id]
+        
+    agent_with_chat_history = RunnableWithMessageHistory(
+        agent_executor,
+        get_session_history,
+        input_messages_key="input",
+        history_messages_key="chat_history",
+    )
+    
+    result2 = generate_hw02(question2)
+    chat_history = get_session_history("<foo>")
+    chat_history.add_user_message(question2)
+    chat_history.add_ai_message(result2)
+    
+    response = agent_with_chat_history.invoke(
+        {"input": question3},
+        config={"configurable": {"session_id": "<foo>"}},
+    )
+    parsed_json = parse_json_markdown(response['output'])
+    parsed_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
+    
+    return parsed_json
     
 def generate_hw04(question):
     pass
