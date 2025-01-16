@@ -364,9 +364,14 @@ def generate_hw04(question):
     
     response = llm.invoke(messages)
     
-    score = int(response.content.strip())
-    
-    result = json.dumps({"Result": {"score": score}}, indent=2)
+    score = response.content.strip()
+
+    # 移除可能存在的引號，然後添加單引號
+    score = score.strip("'\"")
+    score_str = f"'{score}'"
+
+    # 使用 json.dumps 時，設置 ensure_ascii=False 來保留 Unicode 字符
+    result = json.dumps({"Result": {"score": score_str}}, ensure_ascii=False, indent=2)
     return result
     
 def demo(question):
