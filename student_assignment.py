@@ -343,13 +343,7 @@ def generate_hw04(question):
     data_url = local_image_to_data_url(image_path)
     # print("Data URL:", data_url)
     
-    system_message = """You are a helpful assistant.
-        following JSON format:
-        {{
-            "Result": {{
-                "score": number
-            }}
-        }}"""
+    system_message = """You are a helpful assistant, you only can output a number"""
     
     messages = [
         SystemMessage(content=system_message),
@@ -369,10 +363,11 @@ def generate_hw04(question):
 
     
     response = llm.invoke(messages)
-    parsed_json = parse_json_markdown(response.content)
-    parsed_json = json.dumps(parsed_json, ensure_ascii=False, indent=2)
     
-    return parsed_json
+    score = int(response.content.strip())
+    
+    result = json.dumps({"Result": {"score": score}}, indent=2)
+    return result
     
 def demo(question):
     llm = AzureChatOpenAI(
